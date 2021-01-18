@@ -11,8 +11,8 @@
 
 #include <WebSocketsServer.h>
 #include <ArduinoJson.h>
-#include <DHT.h> 
-#include <Ticker.h> 
+#include <DHT.h>
+#include <Ticker.h>
 
 #define DHTPIN 4
 #define LED1 13
@@ -48,14 +48,23 @@ connection.onmessage = function(event){
   hum_data = data.hum;
   gas_data = data.gas;
   pir_data = data.pir;
-  light_data = data.light
+  if(data.pir == 1){
+    button_1_on();
+  } else{
+    button_1_off();
+  }
+  if(data.gas > 900) {
+    button_2_on();
+  }else {
+    button_2_off();
+  }
+  
   document.getElementById("temp_meter").value = temp_data;
   document.getElementById("temp_value").innerHTML = temp_data;
   document.getElementById("hum_meter").value = hum_data;
   document.getElementById("hum_value").innerHTML = hum_data;
   document.getElementById("gas_value").innerHTML = gas_data;
   document.getElementById("pir_value").innerHTML = pir_data;
-  document.getElementById("light_value").innerHTML = light_data;
 }
 function button_1_on()
 {
@@ -100,7 +109,6 @@ function send_data()
 <h3>Humidity</h3><meter value="2" min="0" max="100" id="hum_meter"> </meter><h3 id="hum_value" style="display: inline-block;"> 2 </h3>
 <h3>Smoke</h3><h3 id="gas_value" style="display: inline-block;"> 2 </h3>
 <h3>PIR</h3><h3 id="pir_value" style="display: inline-block;"> 2 </h3>
-<h3>LIGHT</h3><h3 id="light_value" style="display: inline-block;"> 2 </h3>
 </body>
 </html>
 )=====";
@@ -211,7 +219,6 @@ void send_sensor()
 {
   float h = dht.readHumidity();
   float t = dht.readTemperature(); // Temp Sensor Read
-  int l = analogRead(LIGHT);
   int p = digitalRead(PIR);
   float g = analogRead(GASPIN); // Gas Module Read
   
@@ -228,8 +235,6 @@ void send_sensor()
          JSON_Data += g;
          JSON_Data += ",\"pir\":";
          JSON_Data += p;
-         JSON_Data += ",\"light\":";
-         JSON_Data += l;
          JSON_Data += "}";
    Serial.println(JSON_Data);     
   websockets.broadcastTXT(JSON_Data);
