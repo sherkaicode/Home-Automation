@@ -8,7 +8,7 @@
 #error "Board not found"
 #endif
 
-//
+
 #include <WebSocketsServer.h>
 #include <ArduinoJson.h>
 #include <DHT.h>
@@ -16,12 +16,12 @@
 
 #define DHTPIN 4
 #define LED1 13
-#define LED2 12
+#define BUZ 12
 #define GASPIN 36
 #define PIR 17
 #define LIGHT 34
 
-#define DHTTYPE    DHT11
+#define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
 
 void send_sensor();
@@ -109,7 +109,7 @@ char webpage[] PROGMEM = R"=====(
             send_data();
         }
         function send_data() {
-            var full_data = '{"LED1" :' + button_1_status + ',"LED2":' + button_2_status + '}';
+            var full_data = '{"LED1" :' + button_1_status + ',"BUZ":' + button_2_status + '}';
             connection.send(full_data);
         }
     </script>
@@ -160,131 +160,119 @@ char webpage[] PROGMEM = R"=====(
 </html>
 )=====";
 
-
 #include <ESPAsyncWebServer.h>
 
-AsyncWebServer server(80); 
+AsyncWebServer server(80);
 WebSocketsServer websockets(81);
 
 void notFound(AsyncWebServerRequest *request)
 {
-  request->send(404, "text/plain", "Page Not found");
+    request->send(404, "text/plain", "Page Not found");
 }
 
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
+{
 
-void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
-
-  switch (type) 
-  {
+    switch (type)
+    {
     case WStype_DISCONNECTED:
-      Serial.printf("[%u] Disconnected!\n", num);
-      break;
-    case WStype_CONNECTED: {
+        Serial.printf("[%u] Disconnected!\n", num);
+        break;
+    case WStype_CONNECTED:
+    {
         IPAddress ip = websockets.remoteIP(num);
         Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
-      }
-      break;
+    }
+    break;
     case WStype_TEXT:
-      Serial.printf("[%u] get Text: %s\n", num, payload);
-      String message = String((char*)( payload));
-      Serial.println(message);
+        Serial.printf("[%u] get Text: %s\n", num, payload);
+        String message = String((char *)(payload));
+        Serial.println(message);
 
-      
-     DynamicJsonDocument doc(200);
-    // deserialize the data
-    DeserializationError error = deserializeJson(doc, message);
-    // parse the parameters we expect to receive (TO-DO: error handling)
-      // Test if parsing succeeds.
-  if (error) {
-    Serial.print("deserializeJson() failed: ");
-    Serial.println(error.c_str());
-    return;
-  }
+        DynamicJsonDocument doc(200);
+        // deserialize the data
+        DeserializationError error = deserializeJson(doc, message);
+        
+        if (error)
+        {
+            Serial.print("deserializeJson() failed: ");
+            Serial.println(error.c_str());
+            return;
+        }
 
-  int LED1_status = doc["LED1"];
-  int LED2_status = doc["LED2"];
-  digitalWrite(LED1,LED1_status);
-  digitalWrite(LED2,LED2_status);
-
-
-
-
-  }
+        int LED1_status = doc["LED1"];
+        int BUZ_status = doc["BUZ"];
+        digitalWrite(LED1, LED1_status);
+        digitalWrite(BUZ, BUZ_status);
+    }
 }
 
 void setup(void)
 {
-  
-  Serial.begin(115200);
-  pinMode(LED1,OUTPUT);
-  pinMode(LED2,OUTPUT);
-  pinMode(GASPIN,INPUT);
-  pinMode(PIR, INPUT);
-  pinMode(LIGHT, INPUT);
-  dht.begin();
-  
-  WiFi.softAP("Athena", "");
-  Serial.println("softap");
-  Serial.println("");
-  Serial.println(WiFi.softAPIP());
 
+    Serial.begin(115200);
+    pinMode(LED1, OUTPUT);
+    pinMode(BUZ, OUTPUT);
+    pinMode(GASPIN, INPUT);
+    pinMode(PIR, INPUT);
+    pinMode(LIGHT, INPUT);
+    dht.begin();
 
-  if (MDNS.begin("ESP")) { //esp.local/
-    Serial.println("MDNS responder started");
-  }
+    WiFi.softAP("Athena", "");
+    Serial.println("softap");
+    Serial.println("");
+    Serial.println(WiFi.softAPIP());
 
+    if (MDNS.begin("ESP"))
+    { //esp.local/
+        Serial.println("MDNS responder started");
+    }
 
+    server.on("/", [](AsyncWebServerRequest *request) {
+        request->send_P(200, "text/html", webpage);
+    });
 
-  server.on("/", [](AsyncWebServerRequest * request)
-  { 
-   
-  request->send_P(200, "text/html", webpage);
-  });
+    server.on("/led1/on", HTTP_GET, [](AsyncWebServerRequest *request) {
+        digitalWrite(LED1, HIGH);
+        request->send_P(200, "text/html", webpage);
+    });
 
-   server.on("/led1/on", HTTP_GET, [](AsyncWebServerRequest * request)
-  { 
-    digitalWrite(LED1,HIGH);
-  request->send_P(200, "text/html", webpage);
-  });
+    server.onNotFound(notFound);
 
-  server.onNotFound(notFound);
-
-  server.begin();  // it will start webserver
-  websockets.begin();
-  websockets.onEvent(webSocketEvent);
-  timer.attach(1,send_sensor);
-
+    server.begin(); // it will start webserver
+    websockets.begin();
+    websockets.onEvent(webSocketEvent);
+    timer.attach(1, send_sensor);
 }
-
 
 void loop(void)
 {
- websockets.loop();
+    websockets.loop();
 }
 
 void send_sensor()
 {
-  float h = dht.readHumidity();
-  float t = dht.readTemperature(); // Temp Sensor Read
-  int p = digitalRead(PIR);
-  float g = analogRead(GASPIN); // Gas Module Read
-  float f = (t *1.8) + 32;
-    if (isnan(h) || isnan(t) || isnan(g)) {
-    Serial.println(F("Failed to read from DHT sensor!"));
-    return;
-  }
-  // JSON_Data = {"temp":t,"hum":h}
-  String JSON_Data = "{\"temp\":";
-         JSON_Data += t;
-         JSON_Data += ",\"hum\":";
-         JSON_Data += h;
-         JSON_Data += ",\"gas\":";
-         JSON_Data += g;
-         JSON_Data += ",\"pir\":";
-         JSON_Data += p;
-         JSON_Data += ",\"far\":";
-         JSON_Data += f;
-         JSON_Data += "}";
-   Serial.println(JSON_Data);     
-  websockets.broadcastTXT(JSON_Data);
+    float h = dht.readHumidity();
+    float t = dht.readTemperature(); // Temp Sensor Read
+    int p = digitalRead(PIR);
+    float g = analogRead(GASPIN); // Gas Module Read
+    float f = (t * 1.8) + 32;
+    if (isnan(h) || isnan(t) || isnan(g))
+    {
+        Serial.println(F("Failed to read from DHT sensor!"));
+        return;
+    }
+    String JSON_Data = "{\"temp\":";
+    JSON_Data += t;
+    JSON_Data += ",\"hum\":";
+    JSON_Data += h;
+    JSON_Data += ",\"gas\":";
+    JSON_Data += g;
+    JSON_Data += ",\"pir\":";
+    JSON_Data += p;
+    JSON_Data += ",\"far\":";
+    JSON_Data += f;
+    JSON_Data += "}";
+    Serial.println(JSON_Data);
+    websockets.broadcastTXT(JSON_Data);
 }
